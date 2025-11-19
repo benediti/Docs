@@ -6,7 +6,7 @@ from datetime import datetime
 
 # ========= CONFIGURAÇÃO =========
 # Nome do seu arquivo modelo (já editado com tags)
-MODELO_PATH = "contrato_modelo.docx"
+MODELO_PATH = "Documento Contrato Serviço - Modelo.docx"
 
 # API de CNPJ (gratuita)
 API_CNPJ = "https://brasilapi.com.br/api/cnpj/v1/"
