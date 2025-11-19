@@ -38,16 +38,47 @@ def preencher_contrato(cnpj, valor, data_inicio, local_execucao, funcoes, observ
 
     # --- 1️⃣ Buscar dados do CNPJ na API ---
     cnpj = re.sub(r'\D', '', cnpj)
-    with st.spinner(f"Consultando dados do CNPJ {cnpj}..."):
-        r = requests.get(f"{API_CNPJ}{cnpj}")
-        if r.status_code != 200:
-            st.error(f"❌ Erro ao consultar CNPJ: {r.text}")
-            return None, None
-        dados = r.json()
+    
+    try:
+        with st.spinner(f"Consultando dados do CNPJ {cnpj}..."):
+            url = f"{API_CNPJ}{cnpj}"
+            st.info(f"🔍 Consultando: {url}")
+            
+            r = requests.get(url, timeout=10)
+            
+            st.info(f"📡 Status da resposta: {r.status_code}")
+            
+            if r.status_code != 200:
+                st.error(f"❌ Erro ao consultar CNPJ (Status {r.status_code})")
+                st.code(r.text[:500])
+                return None, None
+            
+            dados = r.json()
+            st.success(f"✅ Dados encontrados: {dados.get('razao_social', 'N/A')}")
+            
+    except requests.exceptions.Timeout:
+        st.error("❌ Tempo esgotado ao consultar API. Tente novamente.")
+        return None, None
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Erro na requisição: {str(e)}")
+        return None, None
+    except Exception as e:
+        st.error(f"❌ Erro inesperado: {str(e)}")
+        return None, None
 
     # --- 2️⃣ Extrair campos ---
     nome_cliente = dados.get("razao_social", "")
-    endereco_cliente = f"{dados.get('logradouro', '')}, {dados.get('numero', '')}, {dados.get('bairro', '')} - {dados.get('municipio', '')}/{dados.get('uf', '')}, CEP {dados.get('cep', '')}"
+    if not nome_cliente:
+        st.warning("⚠️ Razão social não encontrada nos dados")
+        
+    logradouro = dados.get('logradouro', '')
+    numero = dados.get('numero', '')
+    bairro = dados.get('bairro', '')
+    municipio = dados.get('municipio', '')
+    uf = dados.get('uf', '')
+    cep = dados.get('cep', '')
+    
+    endereco_cliente = f"{logradouro}, {numero}, {bairro} - {municipio}/{uf}, CEP {cep}"
 
     valor_extenso = numero_para_extenso(float(valor))
 
