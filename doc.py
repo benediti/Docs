@@ -3,10 +3,13 @@ import requests
 from docx import Document
 import re
 from datetime import datetime
+import os
 
 # ========= CONFIGURAÇÃO =========
 # Nome do seu arquivo modelo (já editado com tags)
-MODELO_PATH = "Documento Contrato Serviço - Modelo.docx"
+# Usa caminho absoluto baseado no diretório do script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELO_PATH = os.path.join(SCRIPT_DIR, "Documento Contrato Serviço - Modelo.docx")
 
 # API de CNPJ (gratuita)
 API_CNPJ = "https://brasilapi.com.br/api/cnpj/v1/"
@@ -46,6 +49,13 @@ def preencher_contrato(cnpj, valor, data_inicio, local_execucao, funcoes, observ
     valor_extenso = numero_para_extenso(float(valor))
 
     # --- 3️⃣ Abrir o modelo e substituir tags ---
+    # Verificar se o arquivo existe
+    if not os.path.exists(MODELO_PATH):
+        print(f"❌ Erro: Arquivo modelo não encontrado em: {MODELO_PATH}")
+        print(f"Diretório atual: {os.getcwd()}")
+        print(f"Arquivos disponíveis: {os.listdir(SCRIPT_DIR)}")
+        return
+    
     doc = Document(MODELO_PATH)
     substituicoes = {
         "{{nome_cliente}}": nome_cliente,
