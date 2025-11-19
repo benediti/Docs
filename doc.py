@@ -125,20 +125,26 @@ def main():
     st.title("📄 Gerador Automático de Contratos")
     st.markdown("Preencha os dados abaixo para gerar um contrato personalizado automaticamente.")
     
-    with st.form("contrato_form"):
+    # Inicializar session state
+    if 'form_submitted' not in st.session_state:
+        st.session_state.form_submitted = False
+    
+    with st.form("contrato_form", clear_on_submit=False):
+        st.markdown("### Dados do Cliente")
         col1, col2 = st.columns(2)
         
         with col1:
-            cnpj = st.text_input("CNPJ do Cliente", value="65035552000180", 
-                                help="Digite apenas números ou com formatação")
-            valor = st.text_input("Valor do Contrato (R$)", value="3400.00")
-            data_inicio = st.text_input("Data de Início", value="03/11/2025")
+            cnpj = st.text_input("CNPJ do Cliente *", value="65035552000180", 
+                                help="Digite apenas números ou com formatação e pressione Enter")
+            valor = st.text_input("Valor do Contrato (R$) *", value="3400.00")
+            data_inicio = st.text_input("Data de Início *", value="03/11/2025")
         
         with col2:
             local_execucao = st.text_area("Local de Execução", 
                                          value="Rua Joaquim Murtinho, 225, Bom Retiro - São Paulo/SP",
                                          height=100)
         
+        st.markdown("### Detalhes do Serviço")
         funcoes = st.text_area("Funções e Horários", 
                               value="Supervisora Operacional / Encarregada – 8h, 4 Auxiliares de Limpeza – 8h",
                               height=100)
@@ -147,30 +153,39 @@ def main():
                                   value="Serviços de limpeza geral realizados bimestralmente aos sábados.",
                                   height=100)
         
-        submitted = st.form_submit_button("🔄 Gerar Contrato", use_container_width=True)
+        st.markdown("---")
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+        with col_btn2:
+            submitted = st.form_submit_button("🔄 Gerar Contrato", use_container_width=True, type="primary")
     
     if submitted:
         if not cnpj or not valor or not data_inicio:
-            st.error("Por favor, preencha todos os campos obrigatórios!")
+            st.error("⚠️ Por favor, preencha todos os campos obrigatórios marcados com *")
         else:
-            doc_bytes, nome_arquivo = preencher_contrato(
-                cnpj=cnpj,
-                valor=valor,
-                data_inicio=data_inicio,
-                local_execucao=local_execucao,
-                funcoes=funcoes,
-                observacoes=observacoes
-            )
-            
-            if doc_bytes and nome_arquivo:
-                st.success("✅ Contrato gerado com sucesso!")
-                st.download_button(
-                    label="📥 Baixar Contrato",
-                    data=doc_bytes,
-                    file_name=nome_arquivo,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
+            with st.container():
+                st.markdown("---")
+                doc_bytes, nome_arquivo = preencher_contrato(
+                    cnpj=cnpj,
+                    valor=valor,
+                    data_inicio=data_inicio,
+                    local_execucao=local_execucao,
+                    funcoes=funcoes,
+                    observacoes=observacoes
                 )
+                
+                if doc_bytes and nome_arquivo:
+                    st.success("✅ Contrato gerado com sucesso!")
+                    
+                    col_download1, col_download2, col_download3 = st.columns([1, 2, 1])
+                    with col_download2:
+                        st.download_button(
+                            label="📥 Baixar Contrato",
+                            data=doc_bytes,
+                            file_name=nome_arquivo,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True,
+                            type="primary"
+                        )
 
 if __name__ == "__main__":
     main()
