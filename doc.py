@@ -114,16 +114,46 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
     # --- 1️⃣ Usar dados do CNPJ já consultados ou informados manualmente ---
     if dados_cnpj:
         nome_cliente = dados_cnpj.get("razao_social", "")
+        nome_fantasia = dados_cnpj.get("nome_fantasia", "")
+        
+        # Montar endereço completo com tipo de logradouro
+        tipo_logradouro = dados_cnpj.get('descricao_tipo_logradouro', '')  # Ex: Rua, Avenida, etc.
         logradouro = dados_cnpj.get('logradouro', '')
         numero = dados_cnpj.get('numero', '')
+        complemento = dados_cnpj.get('complemento', '')
         bairro = dados_cnpj.get('bairro', '')
         municipio = dados_cnpj.get('municipio', '')
         uf = dados_cnpj.get('uf', '')
         cep = dados_cnpj.get('cep', '')
-        endereco_cliente = f"{logradouro}, {numero}, {bairro} - {municipio}/{uf}, CEP {cep}"
+        
+        # Construir endereço
+        partes_endereco = []
+        if tipo_logradouro:
+            partes_endereco.append(tipo_logradouro)
+        if logradouro:
+            partes_endereco.append(logradouro)
+        
+        endereco_base = ' '.join(partes_endereco)
+        
+        # Adicionar número e complemento
+        if numero:
+            endereco_base += f", {numero}"
+        if complemento:
+            endereco_base += f", {complemento}"
+        
+        # Adicionar bairro, cidade e CEP
+        if bairro:
+            endereco_base += f", {bairro}"
+        if municipio and uf:
+            endereco_base += f" - {municipio}/{uf}"
+        if cep:
+            endereco_base += f", CEP {cep}"
+        
+        endereco_cliente = endereco_base
         cnpj_formatado = re.sub(r'\D', '', cnpj)
     else:
         nome_cliente = "NÃO INFORMADO"
+        nome_fantasia = ""
         endereco_cliente = "NÃO INFORMADO"
         cnpj_formatado = re.sub(r'\D', '', cnpj)
 
@@ -143,6 +173,7 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         "{{tipo_servico}}": tipo_servico,
         "{{nome_servico}}": nome_servico,
         "{{nome_cliente}}": nome_cliente,
+        "{{nome_fantasia}}": nome_fantasia if nome_fantasia else "",
         "{{endereco_cliente}}": endereco_cliente,
         "{{cnpj}}": cnpj_formatado,
         "{{ie_cliente}}": ie_cliente,
@@ -223,12 +254,27 @@ def main():
                     col_info1, col_info2 = st.columns(2)
                     with col_info1:
                         st.write(f"**Razão Social:** {dados.get('razao_social', 'N/A')}")
-                        st.write(f"**CNPJ:** {dados.get('cnpj', 'N/A')}")
                         st.write(f"**Nome Fantasia:** {dados.get('nome_fantasia', 'N/A')}")
+                        st.write(f"**CNPJ:** {dados.get('cnpj', 'N/A')}")
                     with col_info2:
-                        st.write(f"**Município:** {dados.get('municipio', 'N/A')}/{dados.get('uf', 'N/A')}")
-                        st.write(f"**Logradouro:** {dados.get('logradouro', 'N/A')}, {dados.get('numero', 'N/A')}")
-                        st.write(f"**Bairro:** {dados.get('bairro', 'N/A')}")
+                        # Montar endereço completo
+                        tipo_log = dados.get('descricao_tipo_logradouro', '')
+                        log = dados.get('logradouro', '')
+                        num = dados.get('numero', '')
+                        comp = dados.get('complemento', '')
+                        bairro = dados.get('bairro', '')
+                        mun = dados.get('municipio', '')
+                        uf = dados.get('uf', '')
+                        
+                        endereco_completo = f"{tipo_log} {log}" if tipo_log else log
+                        if num:
+                            endereco_completo += f", {num}"
+                        if comp:
+                            endereco_completo += f", {comp}"
+                        
+                        st.write(f"**Endereço:** {endereco_completo}")
+                        st.write(f"**Bairro:** {bairro}")
+                        st.write(f"**Cidade/UF:** {mun}/{uf}")
     
     st.markdown("---")
     

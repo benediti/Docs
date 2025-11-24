@@ -27,19 +27,23 @@ Sistema web para geração automatizada de contratos com consulta de CNPJ e expo
 Certifique-se de que seu arquivo `Documento Contrato Serviço - Modelo.docx` contenha os seguintes placeholders:
 
 ```
-{{tipo_servico}}
-{{nome_servico}}
-{{nome_cliente}}
-{{endereco_cliente}}
-{{cnpj}}
-{{ie_cliente}}
-{{funcoes}}
-{{observacoes}}
-{{local_execucao}}
-{{valor_num}}
-{{valor_extenso}}
-{{data_inicio}}
+{{tipo_servico}}         - Tipo de Serviço
+{{nome_servico}}         - Nome do Serviço
+{{nome_cliente}}         - Razão Social (via CNPJ)
+{{nome_fantasia}}        - Nome Fantasia (via CNPJ)
+{{endereco_cliente}}     - Endereço completo (Tipo Logradouro + Rua + Número + Complemento + Bairro + Cidade/UF + CEP)
+{{cnpj}}                 - CNPJ
+{{ie_cliente}}           - Inscrição Estadual
+{{funcoes}}              - Funções e Quadro Funcional
+{{observacoes}}          - Observações
+{{local_execucao}}       - Local de Execução
+{{valor_num}}            - Valor numérico (R$ X.XXX,XX)
+{{valor_extenso}}        - Valor por extenso
+{{data_inicio}}          - Data de Início
 ```
+
+**Exemplo de endereço gerado:**
+- `Avenida Brigadeiro Faria Lima, 201, Pinheiros - São Paulo/SP, CEP 05426-100`
 
 ## 🛠️ Instalação
 
