@@ -30,8 +30,8 @@ Certifique-se de que seu arquivo `Documento Contrato Serviço - Modelo.docx` con
 {{tipo_servico}}         - Tipo de Serviço
 {{nome_servico}}         - Nome do Serviço
 {{nome_cliente}}         - Razão Social (via CNPJ)
-{{nome_fantasia}}        - Nome Fantasia (via CNPJ)
-{{endereco_cliente}}     - Endereço completo (Tipo Logradouro + Rua + Número + Complemento + Bairro + Cidade/UF + CEP)
+{{nome_fantasia}}        - Nome Fantasia (via CNPJ - pode estar vazio)
+{{endereco_cliente}}     - Endereço completo (Logradouro, Número, Complemento, Bairro, Cidade/UF, CEP)
 {{cnpj}}                 - CNPJ
 {{ie_cliente}}           - Inscrição Estadual
 {{funcoes}}              - Funções e Quadro Funcional
@@ -42,8 +42,10 @@ Certifique-se de que seu arquivo `Documento Contrato Serviço - Modelo.docx` con
 {{data_inicio}}          - Data de Início
 ```
 
-**Exemplo de endereço gerado:**
-- `Avenida Brigadeiro Faria Lima, 201, Pinheiros - São Paulo/SP, CEP 05426-100`
+**Exemplo de endereço gerado via API:**
+- `BRIGADEIRO FARIA LIMA, 201, CONJ 121 E 122 - PINHEIROS - SAO PAULO/SP, CEP 05426-100`
+
+**Nota:** A API BrasilAPI não retorna o tipo de logradouro (Rua, Avenida, etc.) separadamente. Se precisar, adicione manualmente no documento.
 
 ## 🛠️ Instalação
 

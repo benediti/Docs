@@ -116,9 +116,9 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         nome_cliente = dados_cnpj.get("razao_social", "")
         nome_fantasia = dados_cnpj.get("nome_fantasia", "")
         
-        # Montar endereço completo com tipo de logradouro
-        tipo_logradouro = dados_cnpj.get('descricao_tipo_logradouro', '')  # Ex: Rua, Avenida, etc.
-        logradouro = dados_cnpj.get('logradouro', '')
+        # Montar endereço completo
+        # A API BrasilAPI não retorna tipo de logradouro separado, apenas o nome
+        logradouro = dados_cnpj.get('logradouro', '')  # Ex: BRIGADEIRO FARIA LIMA
         numero = dados_cnpj.get('numero', '')
         complemento = dados_cnpj.get('complemento', '')
         bairro = dados_cnpj.get('bairro', '')
@@ -128,26 +128,27 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         
         # Construir endereço
         partes_endereco = []
-        if tipo_logradouro:
-            partes_endereco.append(tipo_logradouro)
         if logradouro:
             partes_endereco.append(logradouro)
-        
-        endereco_base = ' '.join(partes_endereco)
-        
-        # Adicionar número e complemento
         if numero:
-            endereco_base += f", {numero}"
+            partes_endereco.append(numero)
         if complemento:
-            endereco_base += f", {complemento}"
+            partes_endereco.append(complemento)
+        
+        endereco_base = ', '.join(partes_endereco)
         
         # Adicionar bairro, cidade e CEP
         if bairro:
-            endereco_base += f", {bairro}"
+            endereco_base += f" - {bairro}"
         if municipio and uf:
             endereco_base += f" - {municipio}/{uf}"
         if cep:
-            endereco_base += f", CEP {cep}"
+            # Formatar CEP (XXXXX-XXX)
+            if len(cep) == 8:
+                cep_formatado = f"{cep[:5]}-{cep[5:]}"
+                endereco_base += f", CEP {cep_formatado}"
+            else:
+                endereco_base += f", CEP {cep}"
         
         endereco_cliente = endereco_base
         cnpj_formatado = re.sub(r'\D', '', cnpj)
@@ -254,27 +255,39 @@ def main():
                     col_info1, col_info2 = st.columns(2)
                     with col_info1:
                         st.write(f"**Razão Social:** {dados.get('razao_social', 'N/A')}")
-                        st.write(f"**Nome Fantasia:** {dados.get('nome_fantasia', 'N/A')}")
+                        nome_fant = dados.get('nome_fantasia', '')
+                        st.write(f"**Nome Fantasia:** {nome_fant if nome_fant else 'Não informado'}")
                         st.write(f"**CNPJ:** {dados.get('cnpj', 'N/A')}")
                     with col_info2:
                         # Montar endereço completo
-                        tipo_log = dados.get('descricao_tipo_logradouro', '')
                         log = dados.get('logradouro', '')
                         num = dados.get('numero', '')
                         comp = dados.get('complemento', '')
                         bairro = dados.get('bairro', '')
                         mun = dados.get('municipio', '')
                         uf = dados.get('uf', '')
+                        cep = dados.get('cep', '')
                         
-                        endereco_completo = f"{tipo_log} {log}" if tipo_log else log
+                        # Formatar CEP
+                        if cep and len(cep) == 8:
+                            cep_formatado = f"{cep[:5]}-{cep[5:]}"
+                        else:
+                            cep_formatado = cep
+                        
+                        endereco_partes = []
+                        if log:
+                            endereco_partes.append(log)
                         if num:
-                            endereco_completo += f", {num}"
+                            endereco_partes.append(num)
                         if comp:
-                            endereco_completo += f", {comp}"
+                            endereco_partes.append(comp)
                         
-                        st.write(f"**Endereço:** {endereco_completo}")
+                        endereco_linha1 = ', '.join(endereco_partes)
+                        
+                        st.write(f"**Endereço:** {endereco_linha1}")
                         st.write(f"**Bairro:** {bairro}")
                         st.write(f"**Cidade/UF:** {mun}/{uf}")
+                        st.write(f"**CEP:** {cep_formatado}")
     
     st.markdown("---")
     
