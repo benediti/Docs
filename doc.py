@@ -2,10 +2,13 @@
 import streamlit as st
 import requests
 from docx import Document
+from docx2pdf import convert
 import re
 from datetime import datetime
 import os
 import io
+import tempfile
+import platform
 
 # ========= CONFIGURAÇÃO =========
 # Nome do seu arquivo modelo (já editado com tags)
@@ -30,93 +33,156 @@ def numero_para_extenso(valor):
     except ImportError:
         return f"{valor:.2f} reais"
 
-def preencher_contrato(cnpj, valor, data_inicio, local_execucao, funcoes, observacoes):
+def consultar_cnpj(cnpj):
     """
-    Gera um contrato preenchido automaticamente com base em um modelo DOCX.
-    Retorna o documento em bytes para download.
+    Consulta dados do CNPJ na API BrasilAPI
+    Retorna os dados ou None em caso de erro
     """
-
-    # --- 1️⃣ Buscar dados do CNPJ na API ---
-    cnpj = re.sub(r'\D', '', cnpj)
+    cnpj_limpo = re.sub(r'\D', '', cnpj)
     
     try:
-        with st.spinner(f"Consultando dados do CNPJ {cnpj}..."):
-            url = f"{API_CNPJ}{cnpj}"
-            st.info(f"🔍 Consultando: {url}")
-            
-            r = requests.get(url, timeout=10)
-            
-            st.info(f"📡 Status da resposta: {r.status_code}")
-            
-            if r.status_code != 200:
-                st.error(f"❌ Erro ao consultar CNPJ (Status {r.status_code})")
-                st.code(r.text[:500])
-                return None, None
-            
-            dados = r.json()
-            st.success(f"✅ Dados encontrados: {dados.get('razao_social', 'N/A')}")
+        url = f"{API_CNPJ}{cnpj_limpo}"
+        r = requests.get(url, timeout=10)
+        
+        if r.status_code != 200:
+            st.error(f"❌ Erro ao consultar CNPJ (Status {r.status_code})")
+            return None
+        
+        dados = r.json()
+        return dados
             
     except requests.exceptions.Timeout:
         st.error("❌ Tempo esgotado ao consultar API. Tente novamente.")
-        return None, None
+        return None
     except requests.exceptions.RequestException as e:
         st.error(f"❌ Erro na requisição: {str(e)}")
-        return None, None
+        return None
     except Exception as e:
         st.error(f"❌ Erro inesperado: {str(e)}")
-        return None, None
+        return None
 
-    # --- 2️⃣ Extrair campos ---
-    nome_cliente = dados.get("razao_social", "")
-    if not nome_cliente:
-        st.warning("⚠️ Razão social não encontrada nos dados")
+def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
+    """
+    Converte um documento DOCX em bytes para PDF
+    Retorna os bytes do PDF ou None se houver erro
+    """
+    try:
+        # Criar arquivos temporários
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_docx:
+            tmp_docx.write(docx_bytes)
+            tmp_docx_path = tmp_docx.name
         
-    logradouro = dados.get('logradouro', '')
-    numero = dados.get('numero', '')
-    bairro = dados.get('bairro', '')
-    municipio = dados.get('municipio', '')
-    uf = dados.get('uf', '')
-    cep = dados.get('cep', '')
-    
-    endereco_cliente = f"{logradouro}, {numero}, {bairro} - {municipio}/{uf}, CEP {cep}"
+        tmp_pdf_path = tmp_docx_path.replace('.docx', '.pdf')
+        
+        # Converter para PDF (funciona apenas no Windows com Word instalado)
+        if platform.system() == 'Windows':
+            try:
+                convert(tmp_docx_path, tmp_pdf_path)
+                
+                # Ler o PDF gerado
+                with open(tmp_pdf_path, 'rb') as f:
+                    pdf_bytes = f.read()
+                
+                # Limpar arquivos temporários
+                os.unlink(tmp_docx_path)
+                os.unlink(tmp_pdf_path)
+                
+                return pdf_bytes
+            except Exception as e:
+                st.warning(f"⚠️ Não foi possível converter para PDF: {str(e)}")
+                st.info("💡 A conversão para PDF requer Microsoft Word instalado no Windows.")
+                # Limpar arquivo temporário
+                if os.path.exists(tmp_docx_path):
+                    os.unlink(tmp_docx_path)
+                return None
+        else:
+            st.info("💡 Conversão para PDF disponível apenas no Windows com Word instalado.")
+            os.unlink(tmp_docx_path)
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Erro ao converter para PDF: {str(e)}")
+        return None
 
+def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data_inicio, 
+                       local_execucao, funcoes, observacoes, dados_cnpj=None):
+    """
+    Gera um contrato preenchido automaticamente com base em um modelo DOCX.
+    Retorna o documento DOCX e PDF em bytes para download.
+    """
+    
+    # --- 1️⃣ Usar dados do CNPJ já consultados ou informados manualmente ---
+    if dados_cnpj:
+        nome_cliente = dados_cnpj.get("razao_social", "")
+        logradouro = dados_cnpj.get('logradouro', '')
+        numero = dados_cnpj.get('numero', '')
+        bairro = dados_cnpj.get('bairro', '')
+        municipio = dados_cnpj.get('municipio', '')
+        uf = dados_cnpj.get('uf', '')
+        cep = dados_cnpj.get('cep', '')
+        endereco_cliente = f"{logradouro}, {numero}, {bairro} - {municipio}/{uf}, CEP {cep}"
+        cnpj_formatado = re.sub(r'\D', '', cnpj)
+    else:
+        nome_cliente = "NÃO INFORMADO"
+        endereco_cliente = "NÃO INFORMADO"
+        cnpj_formatado = re.sub(r'\D', '', cnpj)
+
+    # --- 2️⃣ Formatar valor ---
     valor_extenso = numero_para_extenso(float(valor))
 
-    # --- 3️⃣ Abrir o modelo e substituir tags ---
-    # Verificar se o arquivo existe
+    # --- 3️⃣ Verificar se o modelo existe ---
     if not os.path.exists(MODELO_PATH):
         st.error(f"❌ Erro: Arquivo modelo não encontrado em: {MODELO_PATH}")
         st.info(f"Diretório atual: {os.getcwd()}")
-        st.info(f"Arquivos disponíveis: {os.listdir(SCRIPT_DIR)}")
-        return None, None
+        st.info(f"Arquivos disponíveis: {os.listdir(SCRIPT_DIR) if os.path.exists(SCRIPT_DIR) else 'N/A'}")
+        return None, None, None, None
     
+    # --- 4️⃣ Abrir o modelo e substituir tags ---
     doc = Document(MODELO_PATH)
     substituicoes = {
+        "{{tipo_servico}}": tipo_servico,
+        "{{nome_servico}}": nome_servico,
         "{{nome_cliente}}": nome_cliente,
-        "{{cnpj_cliente}}": cnpj,
         "{{endereco_cliente}}": endereco_cliente,
+        "{{cnpj}}": cnpj_formatado,
+        "{{ie_cliente}}": ie_cliente,
+        "{{funcoes}}": funcoes,
+        "{{observacoes}}": observacoes,
+        "{{local_execucao}}": local_execucao,
         "{{valor_num}}": f"R$ {valor}",
         "{{valor_extenso}}": valor_extenso.capitalize(),
-        "{{data_inicio}}": data_inicio,
-        "{{local_execucao}}": local_execucao,
-        "{{funcoes}}": funcoes,
-        "{{observacoes}}": observacoes
+        "{{data_inicio}}": data_inicio
     }
 
+    # Substituir em parágrafos
     for p in doc.paragraphs:
-        for tag, valor in substituicoes.items():
+        for tag, val in substituicoes.items():
             if tag in p.text:
-                p.text = p.text.replace(tag, str(valor))
+                p.text = p.text.replace(tag, str(val))
+    
+    # Substituir em tabelas
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for tag, val in substituicoes.items():
+                    if tag in cell.text:
+                        cell.text = cell.text.replace(tag, str(val))
 
-    # --- 4️⃣ Salvar o contrato em memória ---
-    nome_arquivo = f"contrato_{nome_cliente[:20].strip().replace(' ', '_')}.docx"
+    # --- 5️⃣ Salvar DOCX em memória ---
+    nome_base = f"contrato_{nome_cliente[:20].strip().replace(' ', '_')}"
+    nome_arquivo_docx = f"{nome_base}.docx"
+    nome_arquivo_pdf = f"{nome_base}.pdf"
     
-    # Salvar em bytes para download
-    doc_bytes = io.BytesIO()
-    doc.save(doc_bytes)
-    doc_bytes.seek(0)
+    # Salvar DOCX em bytes
+    docx_bytes_io = io.BytesIO()
+    doc.save(docx_bytes_io)
+    docx_bytes_io.seek(0)
+    docx_bytes = docx_bytes_io.getvalue()
     
-    return doc_bytes.getvalue(), nome_arquivo
+    # --- 6️⃣ Converter para PDF ---
+    pdf_bytes = converter_docx_para_pdf(docx_bytes, nome_base)
+    
+    return docx_bytes, nome_arquivo_docx, pdf_bytes, nome_arquivo_pdf
 
 # ========= INTERFACE STREAMLIT =========
 def main():
@@ -126,66 +192,156 @@ def main():
     st.markdown("Preencha os dados abaixo para gerar um contrato personalizado automaticamente.")
     
     # Inicializar session state
-    if 'form_submitted' not in st.session_state:
-        st.session_state.form_submitted = False
+    if 'dados_cnpj' not in st.session_state:
+        st.session_state.dados_cnpj = None
+    if 'cnpj_consultado' not in st.session_state:
+        st.session_state.cnpj_consultado = ""
     
+    # Seção para consulta de CNPJ
+    st.markdown("### 🔍 Consulta de CNPJ")
+    col_cnpj1, col_cnpj2 = st.columns([3, 1])
+    
+    with col_cnpj1:
+        cnpj_input = st.text_input("Digite o CNPJ para consulta automática", 
+                                   value="65035552000180",
+                                   help="Digite o CNPJ e clique em Consultar")
+    with col_cnpj2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_consultar = st.button("🔎 Consultar CNPJ", use_container_width=True, type="primary")
+    
+    # Consultar CNPJ quando o botão for clicado
+    if btn_consultar and cnpj_input:
+        with st.spinner("Consultando CNPJ..."):
+            dados = consultar_cnpj(cnpj_input)
+            if dados:
+                st.session_state.dados_cnpj = dados
+                st.session_state.cnpj_consultado = cnpj_input
+                st.success(f"✅ Dados encontrados: {dados.get('razao_social', 'N/A')}")
+                
+                # Mostrar dados encontrados
+                with st.expander("📋 Dados da Empresa", expanded=True):
+                    col_info1, col_info2 = st.columns(2)
+                    with col_info1:
+                        st.write(f"**Razão Social:** {dados.get('razao_social', 'N/A')}")
+                        st.write(f"**CNPJ:** {dados.get('cnpj', 'N/A')}")
+                        st.write(f"**Nome Fantasia:** {dados.get('nome_fantasia', 'N/A')}")
+                    with col_info2:
+                        st.write(f"**Município:** {dados.get('municipio', 'N/A')}/{dados.get('uf', 'N/A')}")
+                        st.write(f"**Logradouro:** {dados.get('logradouro', 'N/A')}, {dados.get('numero', 'N/A')}")
+                        st.write(f"**Bairro:** {dados.get('bairro', 'N/A')}")
+    
+    st.markdown("---")
+    
+    # Formulário principal
     with st.form("contrato_form", clear_on_submit=False):
-        st.markdown("### Dados do Cliente")
+        st.markdown("### 📝 Dados do Serviço")
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            cnpj = st.text_input("CNPJ do Cliente *", value="65035552000180", 
-                                help="Digite apenas números ou com formatação e pressione Enter")
-            valor = st.text_input("Valor do Contrato (R$) *", value="3400.00")
-            data_inicio = st.text_input("Data de Início *", value="03/11/2025")
+            tipo_servico = st.text_input("Tipo de Serviço *", 
+                                        value="Prestação de Serviços de Limpeza",
+                                        help="Ex: Prestação de Serviços de Limpeza")
+            
+            nome_servico = st.text_input("Nome do Serviço *", 
+                                        value="Limpeza e Conservação",
+                                        help="Ex: Limpeza e Conservação")
+            
+            valor = st.text_input("Valor Mensal (R$) *", 
+                                 value="3400.00",
+                                 help="Valor numérico, ex: 3400.00")
+            
+            data_inicio = st.text_input("Data de Início *", 
+                                       value="03/11/2025",
+                                       help="Formato: DD/MM/AAAA")
         
         with col2:
-            local_execucao = st.text_area("Local de Execução", 
+            cnpj = st.text_input("CNPJ *", 
+                                value=st.session_state.cnpj_consultado if st.session_state.cnpj_consultado else "65035552000180",
+                                help="Será preenchido automaticamente após consulta")
+            
+            ie_cliente = st.text_input("Inscrição Estadual", 
+                                      value="",
+                                      help="Deixe em branco se não houver")
+            
+            local_execucao = st.text_area("Local de Execução *", 
                                          value="Rua Joaquim Murtinho, 225, Bom Retiro - São Paulo/SP",
-                                         height=100)
+                                         height=100,
+                                         help="Endereço onde o serviço será executado")
         
-        st.markdown("### Detalhes do Serviço")
-        funcoes = st.text_area("Funções e Horários", 
-                              value="Supervisora Operacional / Encarregada – 8h, 4 Auxiliares de Limpeza – 8h",
-                              height=100)
+        st.markdown("### 👥 Funções e Quadro Funcional")
+        funcoes = st.text_area("Funções e Quadro Funcional *", 
+                              value="Supervisora Operacional / Encarregada – 8h\n4 Auxiliares de Limpeza – 8h",
+                              height=120,
+                              help="Descreva as funções e quantidade de funcionários")
         
+        st.markdown("### 📌 Observações")
         observacoes = st.text_area("Observações", 
                                   value="Serviços de limpeza geral realizados bimestralmente aos sábados.",
-                                  height=100)
+                                  height=100,
+                                  help="Informações adicionais sobre o contrato")
         
         st.markdown("---")
         col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
         with col_btn2:
-            submitted = st.form_submit_button("🔄 Gerar Contrato", use_container_width=True, type="primary")
+            submitted = st.form_submit_button("🔄 Gerar Contrato (DOCX e PDF)", 
+                                             use_container_width=True, 
+                                             type="primary")
     
+    # Processar formulário
     if submitted:
-        if not cnpj or not valor or not data_inicio:
+        if not all([tipo_servico, nome_servico, cnpj, valor, data_inicio, local_execucao, funcoes]):
             st.error("⚠️ Por favor, preencha todos os campos obrigatórios marcados com *")
         else:
             with st.container():
                 st.markdown("---")
-                doc_bytes, nome_arquivo = preencher_contrato(
-                    cnpj=cnpj,
-                    valor=valor,
-                    data_inicio=data_inicio,
-                    local_execucao=local_execucao,
-                    funcoes=funcoes,
-                    observacoes=observacoes
-                )
                 
-                if doc_bytes and nome_arquivo:
+                with st.spinner("Gerando contrato..."):
+                    docx_bytes, nome_docx, pdf_bytes, nome_pdf = preencher_contrato(
+                        tipo_servico=tipo_servico,
+                        nome_servico=nome_servico,
+                        cnpj=cnpj,
+                        ie_cliente=ie_cliente if ie_cliente else "NÃO INFORMADO",
+                        valor=valor,
+                        data_inicio=data_inicio,
+                        local_execucao=local_execucao,
+                        funcoes=funcoes,
+                        observacoes=observacoes,
+                        dados_cnpj=st.session_state.dados_cnpj
+                    )
+                
+                if docx_bytes and nome_docx:
                     st.success("✅ Contrato gerado com sucesso!")
                     
-                    col_download1, col_download2, col_download3 = st.columns([1, 2, 1])
-                    with col_download2:
+                    col_down1, col_down2, col_down3 = st.columns([1, 1, 1])
+                    
+                    with col_down1:
                         st.download_button(
-                            label="📥 Baixar Contrato",
-                            data=doc_bytes,
-                            file_name=nome_arquivo,
+                            label="📥 Baixar DOCX",
+                            data=docx_bytes,
+                            file_name=nome_docx,
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             use_container_width=True,
-                            type="primary"
+                            type="secondary"
                         )
+                    
+                    with col_down2:
+                        if pdf_bytes and nome_pdf:
+                            st.download_button(
+                                label="📄 Baixar PDF",
+                                data=pdf_bytes,
+                                file_name=nome_pdf,
+                                mime="application/pdf",
+                                use_container_width=True,
+                                type="primary"
+                            )
+                        else:
+                            st.info("PDF não disponível")
+                    
+                    with col_down3:
+                        st.button("🔄 Novo Contrato", 
+                                 use_container_width=True,
+                                 on_click=lambda: st.session_state.clear())
 
 if __name__ == "__main__":
     main()

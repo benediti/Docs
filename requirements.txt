@@ -1,4 +1,5 @@
+streamlit
 python-docx
 requests
 num2words
-streamlit
+docx2pdf
