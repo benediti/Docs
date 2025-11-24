@@ -33,6 +33,34 @@ def numero_para_extenso(valor):
     except ImportError:
         return f"{valor:.2f} reais"
 
+def substituir_placeholder_em_paragrafo(paragraph, tag, valor):
+    """
+    Substitui um placeholder em um parágrafo, lidando com runs quebrados
+    """
+    # Verificar se o tag está no texto completo
+    if tag not in paragraph.text:
+        return False
+    
+    # Juntar todo o texto e verificar posição
+    texto_completo = paragraph.text
+    
+    # Se o placeholder está no texto, vamos reconstruir
+    if tag in texto_completo:
+        # Limpar todos os runs existentes
+        for run in paragraph.runs:
+            run.text = ""
+        
+        # Substituir e adicionar no primeiro run
+        novo_texto = texto_completo.replace(tag, str(valor))
+        if paragraph.runs:
+            paragraph.runs[0].text = novo_texto
+        else:
+            paragraph.add_run(novo_texto)
+        
+        return True
+    
+    return False
+
 def consultar_cnpj(cnpj):
     """
     Consulta dados do CNPJ na API BrasilAPI
@@ -200,16 +228,15 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
     # Substituir em parágrafos
     for p in doc.paragraphs:
         for tag, val in substituicoes.items():
-            if tag in p.text:
-                p.text = p.text.replace(tag, str(val))
+            substituir_placeholder_em_paragrafo(p, tag, val)
     
     # Substituir em tabelas
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                for tag, val in substituicoes.items():
-                    if tag in cell.text:
-                        cell.text = cell.text.replace(tag, str(val))
+                for paragraph in cell.paragraphs:
+                    for tag, val in substituicoes.items():
+                        substituir_placeholder_em_paragrafo(paragraph, tag, val)
 
     # --- 5️⃣ Salvar DOCX em memória ---
     nome_base = f"contrato_{nome_cliente[:20].strip().replace(' ', '_')}"
