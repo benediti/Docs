@@ -159,7 +159,14 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         cnpj_formatado = re.sub(r'\D', '', cnpj)
 
     # --- 2️⃣ Formatar valor ---
-    valor_extenso = numero_para_extenso(float(valor))
+    try:
+        # Limpar e converter valor (aceita vírgula ou ponto)
+        valor_limpo = str(valor).replace(',', '.').strip()
+        valor_float = float(valor_limpo)
+        valor_extenso = numero_para_extenso(valor_float)
+    except ValueError:
+        st.error(f"❌ Valor inválido: '{valor}'. Use formato numérico (ex: 3400.00 ou 3400,00)")
+        return None, None, None, None
 
     # --- 3️⃣ Verificar se o modelo existe ---
     if not os.path.exists(MODELO_PATH):
@@ -170,6 +177,10 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
     
     # --- 4️⃣ Abrir o modelo e substituir tags ---
     doc = Document(MODELO_PATH)
+    
+    # Formatar valor monetário
+    valor_formatado = f"R$ {valor_float:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    
     substituicoes = {
         "{{tipo_servico}}": tipo_servico,
         "{{nome_servico}}": nome_servico,
@@ -181,7 +192,7 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         "{{funcoes}}": funcoes,
         "{{observacoes}}": observacoes,
         "{{local_execucao}}": local_execucao,
-        "{{valor_num}}": f"R$ {valor}",
+        "{{valor_num}}": valor_formatado,
         "{{valor_extenso}}": valor_extenso.capitalize(),
         "{{data_inicio}}": data_inicio
     }
