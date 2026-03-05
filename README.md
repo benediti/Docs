@@ -106,7 +106,8 @@ streamlit run doc.py
 - **Conversão PDF (ordem de tentativa):**
    1. Microsoft Word (`docx2pdf`) - maior fidelidade visual.
    2. LibreOffice (`soffice --headless`) - boa fidelidade visual.
-   3. Fallback compatível em Python - preserva conteúdo, mas pode simplificar a formatação.
+   3. ConvertAPI (nuvem) - boa fidelidade no Streamlit Cloud.
+   4. Fallback compatível em Python - preserva conteúdo, mas pode simplificar a formatação.
 - **API CNPJ:** Usa a API gratuita BrasilAPI (pode ter limitações de uso)
 - **Template:** O arquivo `Documento Contrato Serviço - Modelo.docx` deve estar no mesmo diretório do `doc.py`
 
@@ -116,6 +117,35 @@ Para manter o layout o mais proximo possivel do DOCX, use um destes cenarios:
 
 - Windows com Microsoft Word instalado.
 - LibreOffice instalado e comando `soffice` disponivel no PATH.
+- Streamlit Cloud com `CONVERTAPI_SECRET` configurado em `Secrets`.
+
+### Configuracao do ConvertAPI no Streamlit Cloud
+
+1. Crie sua API no ConvertAPI.
+2. No painel do app (Streamlit Cloud), abra `Settings` -> `Secrets`.
+3. Adicione (JWT recomendado):
+
+```toml
+CONVERTAPI_API_TOKEN = "seu_api_token"
+CONVERTAPI_KID = "seu_kid"
+CONVERTAPI_EXPIRES_IN_SEC = 3600
+# opcional:
+# CONVERTAPI_CLIENT_IP = "localhost,197.0.0.1"
+```
+
+Opcionalmente, se voce ja tiver um JWT pronto:
+
+```toml
+CONVERTAPI_JWT = "seu_jwt_token"
+```
+
+Modo legado (ainda suportado):
+
+```toml
+CONVERTAPI_SECRET = "sua_chave_aqui"
+```
+
+Sem nenhuma credencial do ConvertAPI, o app usa o fallback compatível, que pode perder formatação do Word.
 
 ## 🤝 Contribuindo
 

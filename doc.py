@@ -29,15 +29,33 @@ API_CNPJ = "https://brasilapi.com.br/api/cnpj/v1/"
 
 def numero_para_extenso(valor):
     """
-    Retorna o valor em formato extenso simples.
-    Exemplo: 3400 -> 'três mil e quatrocentos reais'
-    (Simplificado; para uso oficial, use num2words)
+    Retorna valor monetario por extenso com reais e centavos.
+    Exemplo: 3400.50 -> 'três mil e quatrocentos reais e cinquenta centavos'
     """
+    valor = round(float(valor), 2)
+
     try:
         from num2words import num2words
-        return num2words(valor, lang='pt_BR') + " reais"
+        # to='currency' gera reais/centavos corretamente em pt_BR.
+        return num2words(valor, lang='pt_BR', to='currency')
     except ImportError:
-        return f"{valor:.2f} reais"
+        inteiro = int(valor)
+        centavos = int(round((valor - inteiro) * 100))
+
+        try:
+            from num2words import num2words
+            parte_inteira = num2words(inteiro, lang='pt_BR')
+            parte_centavos = num2words(centavos, lang='pt_BR')
+        except Exception:
+            parte_inteira = str(inteiro)
+            parte_centavos = str(centavos)
+
+        moeda = "real" if inteiro == 1 else "reais"
+        if centavos > 0:
+            cent = "centavo" if centavos == 1 else "centavos"
+            return f"{parte_inteira} {moeda} e {parte_centavos} {cent}"
+
+        return f"{parte_inteira} {moeda}"
 
 def substituir_placeholder_em_paragrafo(paragraph, tag, valor):
     """
@@ -100,6 +118,107 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
     Converte um documento DOCX em bytes para PDF
     Retorna os bytes do PDF e o motor de conversao usado
     """
+    def converter_por_convertapi(docx_data):
+        """
+        Converte DOCX para PDF via ConvertAPI (nuvem), util em ambientes sem Word/LibreOffice.
+        Suporta autenticacao por JWT (recomendado) ou Secret (legado).
+        """
+        def get_secret_value(key, default=""):
+            try:
+                return st.secrets.get(key, default)
+            except Exception:
+                return os.getenv(key, default)
+
+        def gerar_jwt_convertapi(api_token, kid, expires_in_sec=3600, client_ip=""):
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_token}",
+            }
+            payload = {
+                "Kid": kid,
+                "ExpiresInSec": int(expires_in_sec),
+            }
+            if client_ip:
+                payload["ClientIp"] = client_ip
+
+            try:
+                resp = requests.post(
+                    "https://v2.convertapi.com/token/jwt",
+                    json=payload,
+                    headers=headers,
+                    timeout=30,
+                )
+                if resp.status_code != 200:
+                    return None
+
+                data = resp.json()
+                if isinstance(data, dict):
+                    return data.get("Token") or data.get("Jwt") or data.get("token") or data.get("jwt")
+                return None
+            except Exception:
+                return None
+
+        secret = ""
+        jwt_token = get_secret_value("CONVERTAPI_JWT", "")
+        api_token = get_secret_value("CONVERTAPI_API_TOKEN", "")
+        kid = get_secret_value("CONVERTAPI_KID", "")
+        client_ip = get_secret_value("CONVERTAPI_CLIENT_IP", "")
+        expires_in = get_secret_value("CONVERTAPI_EXPIRES_IN_SEC", 3600)
+
+        if not jwt_token and api_token and kid:
+            jwt_token = gerar_jwt_convertapi(api_token, kid, expires_in, client_ip)
+
+        try:
+            secret = get_secret_value("CONVERTAPI_SECRET", "")
+        except Exception:
+            secret = ""
+
+        if not jwt_token and not secret:
+            return None
+
+        try:
+            headers = {}
+            params = {}
+
+            if jwt_token:
+                headers["Authorization"] = f"Bearer {jwt_token}"
+            else:
+                params["Secret"] = secret
+
+            response = requests.post(
+                "https://v2.convertapi.com/convert/docx/to/pdf",
+                params=params,
+                headers=headers,
+                files={
+                    "File": (
+                        "documento.docx",
+                        docx_data,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
+                timeout=60,
+            )
+
+            if response.status_code != 200:
+                return None
+
+            payload = response.json()
+            arquivos = payload.get("Files", [])
+            if not arquivos:
+                return None
+
+            url_pdf = arquivos[0].get("Url")
+            if not url_pdf:
+                return None
+
+            pdf_response = requests.get(url_pdf, timeout=60)
+            if pdf_response.status_code != 200:
+                return None
+
+            return pdf_response.content
+        except Exception:
+            return None
+
     def gerar_pdf_fallback(docx_data):
         """
         Gera um PDF simples a partir do texto do DOCX quando a conversao nativa falha.
@@ -195,6 +314,11 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
                         return f.read(), "LibreOffice (soffice)"
             except Exception:
                 pass
+
+        # Terceira tentativa: conversao em nuvem (fidelidade melhor que fallback em texto)
+        pdf_convertapi = converter_por_convertapi(docx_bytes)
+        if pdf_convertapi:
+            return pdf_convertapi, "ConvertAPI (nuvem)"
 
         # Fallback universal para garantir download em PDF
         pdf_fallback = gerar_pdf_fallback(docx_bytes)
