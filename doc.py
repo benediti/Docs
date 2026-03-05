@@ -338,12 +338,7 @@ def main():
     with st.form("contrato_form", clear_on_submit=False):
         st.markdown("### 📝 Dados do Serviço")
 
-        modelo_selecionado = st.selectbox(
-            "Modelo do documento *",
-            options=list(MODELOS_DISPONIVEIS.keys()),
-            index=0,
-            help="Escolha qual modelo sera preenchido e disponibilizado para download."
-        )
+        st.caption("Selecione abaixo qual documento deseja gerar.")
         
         col1, col2 = st.columns(2)
         
@@ -391,11 +386,21 @@ def main():
                                   help="Informações adicionais sobre o contrato")
         
         st.markdown("---")
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            submitted_contrato = st.form_submit_button(
+                "📄 Gerar Contrato (DOCX e PDF)",
+                use_container_width=True,
+                type="primary"
+            )
         with col_btn2:
-            submitted = st.form_submit_button("🔄 Gerar Contrato (DOCX e PDF)", 
-                                             use_container_width=True, 
-                                             type="primary")
+            submitted_adendo = st.form_submit_button(
+                "📑 Gerar Adendo 2026 (DOCX e PDF)",
+                use_container_width=True,
+                type="secondary"
+            )
+
+    submitted = submitted_contrato or submitted_adendo
     
     # Processar formulário
     if submitted:
@@ -406,6 +411,7 @@ def main():
                 st.markdown("---")
                 
                 with st.spinner("Gerando contrato..."):
+                    modelo_selecionado = "Adendo 2026" if submitted_adendo else "Contrato de Servico"
                     docx_bytes, nome_docx, pdf_bytes, nome_pdf = preencher_contrato(
                         tipo_servico=tipo_servico,
                         nome_servico=nome_servico,
