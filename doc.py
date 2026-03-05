@@ -11,8 +11,6 @@ import tempfile
 import platform
 import shutil
 import subprocess
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
 import textwrap
 
 # ========= CONFIGURAÇÃO =========
@@ -106,6 +104,14 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
         """
         Gera um PDF simples a partir do texto do DOCX quando a conversao nativa falha.
         """
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+        except ImportError:
+            st.error("❌ Biblioteca 'reportlab' não encontrada para gerar PDF compatível.")
+            st.info("💡 Atualize as dependências com: pip install -r requirements.txt")
+            return None
+
         doc_temp = Document(io.BytesIO(docx_data))
         pdf_buffer = io.BytesIO()
         pdf = canvas.Canvas(pdf_buffer, pagesize=A4)
@@ -191,7 +197,10 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
                 pass
 
         # Fallback universal para garantir download em PDF
-        return gerar_pdf_fallback(docx_bytes), "Compativel (fallback)"
+        pdf_fallback = gerar_pdf_fallback(docx_bytes)
+        if pdf_fallback:
+            return pdf_fallback, "Compativel (fallback)"
+        return None, None
             
     except Exception as e:
         st.error(f"❌ Erro ao converter para PDF: {str(e)}")
