@@ -20,7 +20,7 @@ Sistema web para geração automatizada de contratos com consulta de CNPJ e expo
   - Valor Mensal (numérico e por extenso)
   - Data de Início
 - ✅ **Geração de DOCX** (Word)
-- ✅ **Conversão para PDF** (requer Windows + Word instalado)
+- ✅ **Conversão para PDF** com fallback compatível (quando Word não estiver disponível)
 - ✅ **Interface intuitiva** com Streamlit
 
 ## 📋 Placeholders no Template DOCX
@@ -103,7 +103,7 @@ streamlit run doc.py
 
 ## ⚠️ Observações
 
-- **Conversão PDF:** Funciona apenas no Windows com Microsoft Word instalado
+- **Conversão PDF:** Quando Microsoft Word não estiver disponível, o sistema gera um PDF compatível com o conteúdo, podendo simplificar a formatação visual.
 - **API CNPJ:** Usa a API gratuita BrasilAPI (pode ter limitações de uso)
 - **Template:** O arquivo `Documento Contrato Serviço - Modelo.docx` deve estar no mesmo diretório do `doc.py`
 

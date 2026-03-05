@@ -9,6 +9,9 @@ import os
 import io
 import tempfile
 import platform
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+import textwrap
 
 # ========= CONFIGURAÇÃO =========
 # Nome do seu arquivo modelo (já editado com tags)
@@ -97,6 +100,52 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
     Converte um documento DOCX em bytes para PDF
     Retorna os bytes do PDF ou None se houver erro
     """
+    def gerar_pdf_fallback(docx_data):
+        """
+        Gera um PDF simples a partir do texto do DOCX quando a conversao nativa falha.
+        """
+        doc_temp = Document(io.BytesIO(docx_data))
+        pdf_buffer = io.BytesIO()
+        pdf = canvas.Canvas(pdf_buffer, pagesize=A4)
+        largura, altura = A4
+        margem = 40
+        y = altura - margem
+
+        def escrever_linha(linha, negrito=False):
+            nonlocal y
+            if y <= margem:
+                pdf.showPage()
+                y = altura - margem
+            fonte = "Helvetica-Bold" if negrito else "Helvetica"
+            pdf.setFont(fonte, 10)
+            pdf.drawString(margem, y, linha)
+            y -= 14
+
+        escrever_linha("Documento gerado automaticamente", negrito=True)
+        escrever_linha("", negrito=False)
+
+        for p in doc_temp.paragraphs:
+            texto = p.text.strip()
+            if not texto:
+                continue
+            for linha in textwrap.wrap(texto, width=100):
+                escrever_linha(linha)
+
+        if doc_temp.tables:
+            escrever_linha("", negrito=False)
+            escrever_linha("Tabelas", negrito=True)
+            for table in doc_temp.tables:
+                for row in table.rows:
+                    linha_tabela = " | ".join(cell.text.strip().replace("\n", " ") for cell in row.cells)
+                    if not linha_tabela.strip():
+                        continue
+                    for linha in textwrap.wrap(linha_tabela, width=100):
+                        escrever_linha(linha)
+
+        pdf.save()
+        pdf_buffer.seek(0)
+        return pdf_buffer.getvalue()
+
     try:
         # Criar arquivos temporários
         with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_docx:
@@ -104,36 +153,29 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             tmp_docx_path = tmp_docx.name
         
         tmp_pdf_path = tmp_docx_path.replace('.docx', '.pdf')
-        
-        # Converter para PDF (funciona apenas no Windows com Word instalado)
+
+        # Conversao principal: Windows + Word (docx2pdf)
         if platform.system() == 'Windows':
             try:
                 convert(tmp_docx_path, tmp_pdf_path)
-                
-                # Ler o PDF gerado
                 with open(tmp_pdf_path, 'rb') as f:
-                    pdf_bytes = f.read()
-                
-                # Limpar arquivos temporários
-                os.unlink(tmp_docx_path)
-                os.unlink(tmp_pdf_path)
-                
-                return pdf_bytes
-            except Exception as e:
-                st.warning(f"⚠️ Não foi possível converter para PDF: {str(e)}")
-                st.info("💡 A conversão para PDF requer Microsoft Word instalado no Windows.")
-                # Limpar arquivo temporário
-                if os.path.exists(tmp_docx_path):
-                    os.unlink(tmp_docx_path)
-                return None
-        else:
-            st.info("💡 Conversão para PDF disponível apenas no Windows com Word instalado.")
-            os.unlink(tmp_docx_path)
-            return None
+                    return f.read()
+            except Exception:
+                pass
+
+        # Fallback universal para garantir download em PDF
+        st.warning("⚠️ Conversão nativa para PDF indisponível. Gerando PDF em modo compatível.")
+        st.info("💡 O PDF compatível preserva o conteúdo, mas pode simplificar a formatação visual.")
+        return gerar_pdf_fallback(docx_bytes)
             
     except Exception as e:
         st.error(f"❌ Erro ao converter para PDF: {str(e)}")
         return None
+    finally:
+        if 'tmp_docx_path' in locals() and os.path.exists(tmp_docx_path):
+            os.unlink(tmp_docx_path)
+        if 'tmp_pdf_path' in locals() and os.path.exists(tmp_pdf_path):
+            os.unlink(tmp_pdf_path)
 
 def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data_inicio,
                        local_execucao, funcoes, observacoes, modelo_path, modelo_nome,
