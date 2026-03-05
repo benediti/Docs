@@ -189,56 +189,18 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
                 st.warning(f"Erro ao gerar JWT no ConvertAPI: {str(e)}")
                 return None
 
-        def gerar_jwt_local(secret_key, kid, expires_in_sec=3600, client_ip=""):
-            """
-            Gera JWT localmente (self-signed) usando HS256, conforme docs do ConvertAPI.
-            """
-            try:
-                import jwt
-            except ImportError:
-                st.warning("PyJWT não instalado. Não foi possível gerar JWT local.")
-                return None
-
-            try:
-                now = int(time.time())
-                payload = {
-                    "kid": kid,
-                    "exp": now + int(expires_in_sec),
-                    "iat": now,
-                    "nbf": now,
-                }
-                if client_ip:
-                    payload["clientIp"] = client_ip
-
-                token = jwt.encode(payload, secret_key, algorithm="HS256")
-                if isinstance(token, bytes):
-                    token = token.decode("utf-8")
-                return token
-            except Exception as e:
-                st.warning(f"Erro ao assinar JWT localmente: {str(e)}")
-                return None
-
         secret = ""
         jwt_token = ""
         jwt_manual = normalizar_jwt(get_secret_value("CONVERTAPI_JWT", ""))
         api_token = get_secret_value("CONVERTAPI_API_TOKEN", "") or get_secret_value("CONVERTAPI_TOKEN", "")
-        signing_secret = (
-            get_secret_value("CONVERTAPI_API_TOKEN_SECRET", "")
-            or get_secret_value("CONVERTAPI_SIGNING_SECRET", "")
-            or api_token
-        )
         kid = get_secret_value("CONVERTAPI_KID", "") or get_secret_value("CONVERTAPI_JWT_KID", "")
         client_ip = get_secret_value("CONVERTAPI_CLIENT_IP", "")
         expires_in = get_secret_value("CONVERTAPI_EXPIRES_IN_SEC", 3600)
 
-        # Prioridade 1: JWT gerado automaticamente por API (nao precisa copiar JWT manual)
-        # Prioridade 2: JWT self-signed local
-        # Prioridade 3: JWT manual salvo em secret
+        # Prioridade 1: JWT gerado automaticamente por API (payload oficial)
+        # Prioridade 2: JWT manual salvo em secret
         if api_token and kid:
             jwt_token = gerar_jwt_convertapi(api_token, kid, expires_in, client_ip)
-
-        if not jwt_token and signing_secret and kid:
-            jwt_token = gerar_jwt_local(signing_secret, kid, expires_in, client_ip)
 
         if not jwt_token and jwt_manual:
             jwt_token = jwt_manual
