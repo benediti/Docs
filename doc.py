@@ -129,6 +129,14 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             except Exception:
                 return os.getenv(key, default)
 
+        def normalizar_jwt(valor):
+            if valor is None:
+                return ""
+            token = str(valor).strip().strip('"').strip("'")
+            if token.lower().startswith("bearer "):
+                token = token[7:].strip()
+            return token
+
         def extrair_jwt(data):
             if not isinstance(data, dict):
                 return None
@@ -181,7 +189,7 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
                 return None
 
         secret = ""
-        jwt_token = get_secret_value("CONVERTAPI_JWT", "")
+        jwt_token = normalizar_jwt(get_secret_value("CONVERTAPI_JWT", ""))
         api_token = get_secret_value("CONVERTAPI_API_TOKEN", "") or get_secret_value("CONVERTAPI_TOKEN", "")
         kid = get_secret_value("CONVERTAPI_KID", "") or get_secret_value("CONVERTAPI_JWT_KID", "")
         client_ip = get_secret_value("CONVERTAPI_CLIENT_IP", "")
@@ -189,6 +197,10 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
 
         if not jwt_token and api_token and kid:
             jwt_token = gerar_jwt_convertapi(api_token, kid, expires_in, client_ip)
+
+        if jwt_token and jwt_token.count(".") != 2:
+            st.warning("CONVERTAPI_JWT parece inválido. Use somente o token JWT (sem texto extra).")
+            jwt_token = ""
 
         try:
             secret = get_secret_value("CONVERTAPI_SECRET", "")
