@@ -4,3 +4,4 @@ requests
 num2words
 docx2pdf
 reportlab
+PyJWT

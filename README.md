@@ -126,12 +126,15 @@ Para manter o layout o mais proximo possivel do DOCX, use um destes cenarios:
 3. Adicione (JWT recomendado):
 
 ```toml
-CONVERTAPI_API_TOKEN = "seu_api_token"
+# Modo self-signed (recomendado)
+CONVERTAPI_API_TOKEN_SECRET = "seu_api_token_secret"
 CONVERTAPI_KID = "seu_kid"
 CONVERTAPI_EXPIRES_IN_SEC = 3600
 # opcional:
 # CONVERTAPI_CLIENT_IP = "localhost,197.0.0.1"
 ```
+
+Opcional: se quiser, tambem pode manter `CONVERTAPI_API_TOKEN` para fallback de geracao via endpoint `/token/jwt`.
 
 Opcionalmente, se voce ja tiver um JWT pronto:
 
