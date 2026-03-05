@@ -103,9 +103,19 @@ streamlit run doc.py
 
 ## ⚠️ Observações
 
-- **Conversão PDF:** Quando Microsoft Word não estiver disponível, o sistema gera um PDF compatível com o conteúdo, podendo simplificar a formatação visual.
+- **Conversão PDF (ordem de tentativa):**
+   1. Microsoft Word (`docx2pdf`) - maior fidelidade visual.
+   2. LibreOffice (`soffice --headless`) - boa fidelidade visual.
+   3. Fallback compatível em Python - preserva conteúdo, mas pode simplificar a formatação.
 - **API CNPJ:** Usa a API gratuita BrasilAPI (pode ter limitações de uso)
 - **Template:** O arquivo `Documento Contrato Serviço - Modelo.docx` deve estar no mesmo diretório do `doc.py`
+
+### Preservar layout do Word no PDF
+
+Para manter o layout o mais proximo possivel do DOCX, use um destes cenarios:
+
+- Windows com Microsoft Word instalado.
+- LibreOffice instalado e comando `soffice` disponivel no PATH.
 
 ## 🤝 Contribuindo
 

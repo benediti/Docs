@@ -9,6 +9,8 @@ import os
 import io
 import tempfile
 import platform
+import shutil
+import subprocess
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import textwrap
@@ -98,7 +100,7 @@ def consultar_cnpj(cnpj):
 def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
     """
     Converte um documento DOCX em bytes para PDF
-    Retorna os bytes do PDF ou None se houver erro
+    Retorna os bytes do PDF e o motor de conversao usado
     """
     def gerar_pdf_fallback(docx_data):
         """
@@ -159,18 +161,41 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             try:
                 convert(tmp_docx_path, tmp_pdf_path)
                 with open(tmp_pdf_path, 'rb') as f:
-                    return f.read()
+                    return f.read(), "Word (docx2pdf)"
+            except Exception:
+                pass
+
+        # Segunda tentativa: LibreOffice (preserva melhor o layout do Word que o fallback)
+        soffice_cmd = shutil.which('soffice')
+        if soffice_cmd:
+            try:
+                subprocess.run(
+                    [
+                        soffice_cmd,
+                        '--headless',
+                        '--convert-to',
+                        'pdf',
+                        '--outdir',
+                        os.path.dirname(tmp_docx_path),
+                        tmp_docx_path,
+                    ],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+
+                if os.path.exists(tmp_pdf_path):
+                    with open(tmp_pdf_path, 'rb') as f:
+                        return f.read(), "LibreOffice (soffice)"
             except Exception:
                 pass
 
         # Fallback universal para garantir download em PDF
-        st.warning("⚠️ Conversão nativa para PDF indisponível. Gerando PDF em modo compatível.")
-        st.info("💡 O PDF compatível preserva o conteúdo, mas pode simplificar a formatação visual.")
-        return gerar_pdf_fallback(docx_bytes)
+        return gerar_pdf_fallback(docx_bytes), "Compativel (fallback)"
             
     except Exception as e:
         st.error(f"❌ Erro ao converter para PDF: {str(e)}")
-        return None
+        return None, None
     finally:
         if 'tmp_docx_path' in locals() and os.path.exists(tmp_docx_path):
             os.unlink(tmp_docx_path)
@@ -182,7 +207,7 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
                        dados_cnpj=None):
     """
     Gera um contrato preenchido automaticamente com base em um modelo DOCX.
-    Retorna o documento DOCX e PDF em bytes para download.
+    Retorna DOCX, PDF e metadados para download.
     """
     
     # --- 1️⃣ Usar dados do CNPJ já consultados ou informados manualmente ---
@@ -240,14 +265,14 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         valor_extenso = numero_para_extenso(valor_float)
     except ValueError:
         st.error(f"❌ Valor inválido: '{valor}'. Use formato numérico (ex: 3400.00 ou 3400,00)")
-        return None, None, None, None
+        return None, None, None, None, None
 
     # --- 3️⃣ Verificar se o modelo existe ---
     if not os.path.exists(modelo_path):
         st.error(f"❌ Erro: Arquivo modelo não encontrado em: {modelo_path}")
         st.info(f"Diretório atual: {os.getcwd()}")
         st.info(f"Arquivos disponíveis: {os.listdir(SCRIPT_DIR) if os.path.exists(SCRIPT_DIR) else 'N/A'}")
-        return None, None, None, None
+        return None, None, None, None, None
     
     # --- 4️⃣ Abrir o modelo e substituir tags ---
     doc = Document(modelo_path)
@@ -297,9 +322,9 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
     docx_bytes = docx_bytes_io.getvalue()
     
     # --- 6️⃣ Converter para PDF ---
-    pdf_bytes = converter_docx_para_pdf(docx_bytes, nome_base)
+    pdf_bytes, motor_pdf = converter_docx_para_pdf(docx_bytes, nome_base)
     
-    return docx_bytes, nome_arquivo_docx, pdf_bytes, nome_arquivo_pdf
+    return docx_bytes, nome_arquivo_docx, pdf_bytes, nome_arquivo_pdf, motor_pdf
 
 # ========= INTERFACE STREAMLIT =========
 def main():
@@ -454,7 +479,7 @@ def main():
                 
                 with st.spinner("Gerando contrato..."):
                     modelo_selecionado = "Adendo 2026" if submitted_adendo else "Contrato de Servico"
-                    docx_bytes, nome_docx, pdf_bytes, nome_pdf = preencher_contrato(
+                    docx_bytes, nome_docx, pdf_bytes, nome_pdf, motor_pdf = preencher_contrato(
                         tipo_servico=tipo_servico,
                         nome_servico=nome_servico,
                         cnpj=cnpj,
@@ -471,6 +496,10 @@ def main():
                 
                 if docx_bytes and nome_docx:
                     st.success("✅ Contrato gerado com sucesso!")
+                    if motor_pdf == "Compativel (fallback)":
+                        st.warning("⚠️ PDF gerado em modo compatível. O conteúdo foi preservado, mas a formatação pode ser simplificada.")
+                    elif motor_pdf:
+                        st.info(f"ℹ️ PDF gerado com: {motor_pdf}")
                     
                     col_down1, col_down2, col_down3 = st.columns([1, 1, 1])
                     
