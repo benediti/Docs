@@ -14,7 +14,10 @@ import platform
 # Nome do seu arquivo modelo (já editado com tags)
 # Usa caminho absoluto baseado no diretório do script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELO_PATH = os.path.join(SCRIPT_DIR, "Documento Contrato Serviço - Modelo.docx")
+MODELOS_DISPONIVEIS = {
+    "Contrato de Servico": os.path.join(SCRIPT_DIR, "Documento Contrato Serviço - Modelo.docx"),
+    "Adendo 2026": os.path.join(SCRIPT_DIR, "Adendo_2026_Modelo.docx"),
+}
 
 # API de CNPJ (gratuita)
 API_CNPJ = "https://brasilapi.com.br/api/cnpj/v1/"
@@ -132,8 +135,9 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
         st.error(f"❌ Erro ao converter para PDF: {str(e)}")
         return None
 
-def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data_inicio, 
-                       local_execucao, funcoes, observacoes, dados_cnpj=None):
+def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data_inicio,
+                       local_execucao, funcoes, observacoes, modelo_path, modelo_nome,
+                       dados_cnpj=None):
     """
     Gera um contrato preenchido automaticamente com base em um modelo DOCX.
     Retorna o documento DOCX e PDF em bytes para download.
@@ -197,14 +201,14 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
         return None, None, None, None
 
     # --- 3️⃣ Verificar se o modelo existe ---
-    if not os.path.exists(MODELO_PATH):
-        st.error(f"❌ Erro: Arquivo modelo não encontrado em: {MODELO_PATH}")
+    if not os.path.exists(modelo_path):
+        st.error(f"❌ Erro: Arquivo modelo não encontrado em: {modelo_path}")
         st.info(f"Diretório atual: {os.getcwd()}")
         st.info(f"Arquivos disponíveis: {os.listdir(SCRIPT_DIR) if os.path.exists(SCRIPT_DIR) else 'N/A'}")
         return None, None, None, None
     
     # --- 4️⃣ Abrir o modelo e substituir tags ---
-    doc = Document(MODELO_PATH)
+    doc = Document(modelo_path)
     
     # Formatar valor monetário
     valor_formatado = f"R$ {valor_float:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -239,7 +243,8 @@ def preencher_contrato(tipo_servico, nome_servico, cnpj, ie_cliente, valor, data
                         substituir_placeholder_em_paragrafo(paragraph, tag, val)
 
     # --- 5️⃣ Salvar DOCX em memória ---
-    nome_base = f"contrato_{nome_cliente[:20].strip().replace(' ', '_')}"
+    prefixo_arquivo = "adendo" if "adendo" in modelo_nome.lower() else "contrato"
+    nome_base = f"{prefixo_arquivo}_{nome_cliente[:20].strip().replace(' ', '_')}"
     nome_arquivo_docx = f"{nome_base}.docx"
     nome_arquivo_pdf = f"{nome_base}.pdf"
     
@@ -332,6 +337,13 @@ def main():
     # Formulário principal
     with st.form("contrato_form", clear_on_submit=False):
         st.markdown("### 📝 Dados do Serviço")
+
+        modelo_selecionado = st.selectbox(
+            "Modelo do documento *",
+            options=list(MODELOS_DISPONIVEIS.keys()),
+            index=0,
+            help="Escolha qual modelo sera preenchido e disponibilizado para download."
+        )
         
         col1, col2 = st.columns(2)
         
@@ -404,6 +416,8 @@ def main():
                         local_execucao=local_execucao,
                         funcoes=funcoes,
                         observacoes=observacoes,
+                        modelo_path=MODELOS_DISPONIVEIS[modelo_selecionado],
+                        modelo_nome=modelo_selecionado,
                         dados_cnpj=st.session_state.dados_cnpj
                     )
                 

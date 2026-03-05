@@ -6,6 +6,7 @@ Sistema web para geração automatizada de contratos com consulta de CNPJ e expo
 
 - ✅ **Consulta automática de CNPJ** via API BrasilAPI
 - ✅ **Preenchimento automático** de dados da empresa (razão social, endereço, etc.)
+- ✅ **Seleção de modelo** entre `Documento Contrato Serviço - Modelo.docx` e `Adendo_2026_Modelo.docx`
 - ✅ **Todos os campos personalizáveis:**
   - Tipo de Serviço
   - Nome do Serviço
@@ -92,6 +93,7 @@ streamlit run doc.py
    - Os dados da empresa serão carregados automaticamente
 
 2. **Preencher Formulário:**
+   - Selecione o modelo do documento (Contrato ou Adendo 2026)
    - Complete todos os campos obrigatórios (*)
    - Os dados do CNPJ já estarão preenchidos se consultados
    - Ajuste valores conforme necessário
