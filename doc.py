@@ -119,10 +119,9 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
     Converte um documento DOCX em bytes para PDF
     Retorna os bytes do PDF e o motor de conversao usado
     """
-    def converter_por_convertapi(docx_data):
+    def converter_por_convertapi(docx_path):
         """
-        Converte DOCX para PDF via ConvertAPI (nuvem), util em ambientes sem Word/LibreOffice.
-        Suporta autenticacao por JWT (recomendado) ou Secret (legado).
+        Converte DOCX para PDF via SDK oficial do ConvertAPI.
         """
         def get_secret_value(key, default=""):
             try:
@@ -130,138 +129,45 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             except Exception:
                 return os.getenv(key, default)
 
-        def normalizar_jwt(valor):
-            if valor is None:
-                return ""
-            token = str(valor).strip().strip('"').strip("'")
-            if token.lower().startswith("bearer "):
-                token = token[7:].strip()
-            return token
-
-        def extrair_jwt(data):
-            if not isinstance(data, dict):
-                return None
-
-            # Chaves conhecidas
-            for key in ("Token", "Jwt", "token", "jwt", "JwtToken", "jwtToken"):
-                value = data.get(key)
-                if isinstance(value, str) and value.count(".") == 2:
-                    return value
-
-            # Fallback: procura qualquer string em formato JWT no payload
-            for value in data.values():
-                if isinstance(value, str) and value.count(".") == 2:
-                    return value
-
+        try:
+            import convertapi
+        except ImportError:
+            st.warning("ConvertAPI SDK não instalado. Execute: pip install convertapi")
             return None
 
-        def gerar_jwt_convertapi(api_token, kid, expires_in_sec=3600, client_ip=""):
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_token}",
-            }
-            payload = {
-                "Kid": kid,
-                "ExpiresInSec": int(expires_in_sec),
-            }
-            if client_ip:
-                payload["ClientIp"] = client_ip
+        credencial = (
+            get_secret_value("CONVERTAPI_SECRET", "")
+            or get_secret_value("CONVERTAPI_API_TOKEN", "")
+            or get_secret_value("CONVERTAPI_TOKEN", "")
+        )
 
-            try:
-                resp = requests.post(
-                    "https://v2.convertapi.com/token/jwt",
-                    json=payload,
-                    headers=headers,
-                    timeout=30,
+        if not credencial:
+            st.info("ConvertAPI não configurado (defina CONVERTAPI_SECRET no secrets/env).")
+            return None
+
+        try:
+            convertapi.api_credentials = str(credencial).strip().strip('"').strip("'")
+
+            with tempfile.TemporaryDirectory() as output_dir:
+                result = convertapi.convert(
+                    "pdf",
+                    {"File": docx_path},
+                    from_format="docx",
                 )
-                if resp.status_code != 200:
-                    st.warning(
-                        f"ConvertAPI JWT falhou ({resp.status_code}). Verifique CONVERTAPI_API_TOKEN e CONVERTAPI_KID."
-                    )
+                result.save_files(output_dir)
+
+                arquivos_pdf = [
+                    os.path.join(output_dir, nome)
+                    for nome in os.listdir(output_dir)
+                    if nome.lower().endswith(".pdf")
+                ]
+
+                if not arquivos_pdf:
+                    st.warning("ConvertAPI não retornou arquivo PDF.")
                     return None
 
-                data = resp.json()
-                token = extrair_jwt(data)
-                if not token:
-                    st.warning("ConvertAPI JWT retornou resposta sem token utilizável.")
-                return token
-            except Exception as e:
-                st.warning(f"Erro ao gerar JWT no ConvertAPI: {str(e)}")
-                return None
-
-        secret = ""
-        jwt_token = ""
-        jwt_manual = normalizar_jwt(get_secret_value("CONVERTAPI_JWT", ""))
-        api_token = get_secret_value("CONVERTAPI_API_TOKEN", "") or get_secret_value("CONVERTAPI_TOKEN", "")
-        kid = get_secret_value("CONVERTAPI_KID", "") or get_secret_value("CONVERTAPI_JWT_KID", "")
-        client_ip = get_secret_value("CONVERTAPI_CLIENT_IP", "")
-        expires_in = get_secret_value("CONVERTAPI_EXPIRES_IN_SEC", 3600)
-
-        # Prioridade 1: JWT gerado automaticamente por API (payload oficial)
-        # Prioridade 2: JWT manual salvo em secret
-        if api_token and kid:
-            jwt_token = gerar_jwt_convertapi(api_token, kid, expires_in, client_ip)
-
-        if not jwt_token and jwt_manual:
-            jwt_token = jwt_manual
-
-        if jwt_token and jwt_token.count(".") != 2:
-            st.warning("JWT inválido. Verifique CONVERTAPI_API_TOKEN/KID ou CONVERTAPI_JWT no formato correto.")
-            jwt_token = ""
-
-        try:
-            secret = get_secret_value("CONVERTAPI_SECRET", "")
-        except Exception:
-            secret = ""
-
-        if not jwt_token and not secret:
-            st.info("ConvertAPI não configurado (faltam credenciais).")
-            return None
-
-        try:
-            headers = {}
-            params = {}
-
-            if jwt_token:
-                headers["Authorization"] = f"Bearer {jwt_token}"
-            else:
-                params["Secret"] = secret
-
-            response = requests.post(
-                "https://v2.convertapi.com/convert/docx/to/pdf",
-                params=params,
-                headers=headers,
-                files={
-                    "File": (
-                        "documento.docx",
-                        docx_data,
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    )
-                },
-                timeout=60,
-            )
-
-            if response.status_code != 200:
-                detalhe = response.text[:200].replace("\n", " ") if response.text else ""
-                st.warning(f"ConvertAPI conversão falhou ({response.status_code}). {detalhe}")
-                return None
-
-            payload = response.json()
-            arquivos = payload.get("Files", [])
-            if not arquivos:
-                st.warning("ConvertAPI retornou resposta sem arquivo PDF.")
-                return None
-
-            url_pdf = arquivos[0].get("Url")
-            if not url_pdf:
-                return None
-
-            pdf_response = requests.get(url_pdf, timeout=60)
-            if pdf_response.status_code != 200:
-                st.warning(f"Download do PDF do ConvertAPI falhou ({pdf_response.status_code}).")
-                return None
-
-            return pdf_response.content
+                with open(arquivos_pdf[0], "rb") as f:
+                    return f.read()
         except Exception as e:
             st.warning(f"Erro na integração ConvertAPI: {str(e)}")
             return None
@@ -363,7 +269,7 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
                 pass
 
         # Terceira tentativa: conversao em nuvem (fidelidade melhor que fallback em texto)
-        pdf_convertapi = converter_por_convertapi(docx_bytes)
+        pdf_convertapi = converter_por_convertapi(tmp_docx_path)
         if pdf_convertapi:
             return pdf_convertapi, "ConvertAPI (nuvem)"
 
