@@ -178,11 +178,17 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
 
     def gerar_pdf_fallback(docx_data):
         """
-        Gera um PDF simples a partir do texto do DOCX quando a conversao nativa falha.
+        Gera PDF a partir do DOCX preservando formatação (negrito, tamanho, alinhamento).
         """
         try:
             from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas
+            from reportlab.lib.units import cm
+            from reportlab.lib import colors
+            from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
+            from reportlab.lib.styles import ParagraphStyle
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
         except ImportError:
             st.error("❌ Biblioteca 'reportlab' não encontrada para gerar PDF compatível.")
             st.info("💡 Atualize as dependências com: pip install -r requirements.txt")
@@ -190,43 +196,121 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
 
         doc_temp = Document(io.BytesIO(docx_data))
         pdf_buffer = io.BytesIO()
-        pdf = canvas.Canvas(pdf_buffer, pagesize=A4)
-        largura, altura = A4
-        margem = 40
-        y = altura - margem
 
-        def escrever_linha(linha, negrito=False):
-            nonlocal y
-            if y <= margem:
-                pdf.showPage()
-                y = altura - margem
-            fonte = "Helvetica-Bold" if negrito else "Helvetica"
-            pdf.setFont(fonte, 10)
-            pdf.drawString(margem, y, linha)
-            y -= 14
+        doc_pdf = SimpleDocTemplate(
+            pdf_buffer, pagesize=A4,
+            rightMargin=2.5*cm, leftMargin=2.5*cm,
+            topMargin=2*cm, bottomMargin=2*cm
+        )
 
-        escrever_linha("Documento gerado automaticamente", negrito=True)
-        escrever_linha("", negrito=False)
+        ALIGN_MAP = {
+            None: TA_JUSTIFY,
+            0: TA_LEFT,
+            1: TA_CENTER,
+            2: TA_RIGHT,
+            3: TA_JUSTIFY,
+        }
 
-        for p in doc_temp.paragraphs:
-            texto = p.text.strip()
-            if not texto:
-                continue
-            for linha in textwrap.wrap(texto, width=100):
-                escrever_linha(linha)
+        def make_style(align=TA_JUSTIFY, font_size=10, space_before=2, space_after=4, bold=False):
+            return ParagraphStyle(
+                'custom',
+                fontName='Helvetica-Bold' if bold else 'Helvetica',
+                fontSize=font_size,
+                leading=font_size * 1.35,
+                alignment=align,
+                spaceBefore=space_before,
+                spaceAfter=space_after,
+            )
 
-        if doc_temp.tables:
-            escrever_linha("", negrito=False)
-            escrever_linha("Tabelas", negrito=True)
-            for table in doc_temp.tables:
-                for row in table.rows:
-                    linha_tabela = " | ".join(cell.text.strip().replace("\n", " ") for cell in row.cells)
-                    if not linha_tabela.strip():
-                        continue
-                    for linha in textwrap.wrap(linha_tabela, width=100):
-                        escrever_linha(linha)
+        def paragrafo_para_flowable(para):
+            texto = para.text
+            if not texto.strip():
+                return Spacer(1, 4)
 
-        pdf.save()
+            align = ALIGN_MAP.get(para.alignment, TA_JUSTIFY)
+
+            # Detectar tamanho de fonte dominante
+            font_size = 10
+            for run in para.runs:
+                if run.font.size:
+                    try:
+                        font_size = max(7, min(18, int(run.font.size.pt)))
+                    except Exception:
+                        pass
+                    break
+
+            # Construir HTML com formatação por run
+            partes = []
+            for run in para.runs:
+                t = (run.text
+                     .replace('&', '&amp;')
+                     .replace('<', '&lt;')
+                     .replace('>', '&gt;'))
+                if not t:
+                    continue
+                bold = run.bold
+                italic = run.italic
+                underline = run.underline
+                if bold:
+                    t = f'<b>{t}</b>'
+                if italic:
+                    t = f'<i>{t}</i>'
+                if underline:
+                    t = f'<u>{t}</u>'
+                partes.append(t)
+
+            html = ''.join(partes)
+            if not html.strip():
+                html = texto.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+            # Detectar se parágrafo inteiro é negrito (títulos de cláusula)
+            todos_bold = all(run.bold for run in para.runs if run.text.strip())
+
+            style = make_style(
+                align=align,
+                font_size=font_size,
+                space_before=3 if todos_bold else 1,
+                space_after=6 if todos_bold else 3,
+                bold=todos_bold and not partes,  # só força fonte se não tiver runs marcados
+            )
+
+            return Paragraph(html, style)
+
+        story = []
+
+        for para in doc_temp.paragraphs:
+            story.append(paragrafo_para_flowable(para))
+
+        for table in doc_temp.tables:
+            col_widths = None
+            table_data = []
+            for row in table.rows:
+                row_data = []
+                for cell in row.cells:
+                    cell_paras = []
+                    for cp in cell.paragraphs:
+                        if cp.text.strip():
+                            cell_paras.append(paragrafo_para_flowable(cp))
+                        else:
+                            cell_paras.append(Spacer(1, 2))
+                    row_data.append(cell_paras if cell_paras else [Spacer(1, 2)])
+                table_data.append(row_data)
+
+            if table_data:
+                t = Table(table_data, colWidths=col_widths, repeatRows=1)
+                t.setStyle(TableStyle([
+                    ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ]))
+                story.append(Spacer(1, 6))
+                story.append(t)
+                story.append(Spacer(1, 6))
+
+        doc_pdf.build(story)
         pdf_buffer.seek(0)
         return pdf_buffer.getvalue()
 
