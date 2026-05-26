@@ -1,8 +1,11 @@
 streamlit
 python-docx
+lxml
+typing_extensions
 requests
 num2words
 docx2pdf
 reportlab
+Pillow
 PyJWT
 convertapi
