@@ -60,31 +60,35 @@ def numero_para_extenso(valor):
 
 def substituir_placeholder_em_paragrafo(paragraph, tag, valor):
     """
-    Substitui um placeholder em um parágrafo, lidando com runs quebrados
+    Substitui um placeholder em um parágrafo, lidando com runs quebrados.
+    Usa XPath para encontrar todos os elementos <w:t> inclusive os aninhados.
     """
-    # Verificar se o tag está no texto completo
     if tag not in paragraph.text:
         return False
-    
-    # Juntar todo o texto e verificar posição
-    texto_completo = paragraph.text
-    
-    # Se o placeholder está no texto, vamos reconstruir
-    if tag in texto_completo:
-        # Limpar todos os runs existentes
-        for run in paragraph.runs:
-            run.text = ""
-        
-        # Substituir e adicionar no primeiro run
-        novo_texto = texto_completo.replace(tag, str(valor))
-        if paragraph.runs:
-            paragraph.runs[0].text = novo_texto
-        else:
-            paragraph.add_run(novo_texto)
-        
-        return True
-    
-    return False
+
+    W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    XML = 'http://www.w3.org/XML/1998/namespace'
+
+    # Coletar todos os elementos <w:t> do parágrafo (inclusive aninhados)
+    t_elements = paragraph._p.findall(f'.//{{{W}}}t')
+    if not t_elements:
+        return False
+
+    # Texto completo combinando todos os <w:t>
+    texto_completo = ''.join((t.text or '') for t in t_elements)
+
+    if tag not in texto_completo:
+        return False
+
+    novo_texto = texto_completo.replace(tag, str(valor))
+
+    # Limpar todos os <w:t> e colocar o texto novo no primeiro
+    for t in t_elements:
+        t.text = ''
+    t_elements[0].text = novo_texto
+    t_elements[0].set(f'{{{XML}}}space', 'preserve')
+
+    return True
 
 def consultar_cnpj(cnpj):
     """
