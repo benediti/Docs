@@ -168,7 +168,7 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
 
                 with open(arquivos_pdf[0], "rb") as f:
                     return f.read()
-        except Exception as e:
+        except BaseException as e:
             st.warning(f"Erro na integração ConvertAPI: {str(e)}")
             return None
 
@@ -269,7 +269,10 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
                 pass
 
         # Terceira tentativa: conversao em nuvem (fidelidade melhor que fallback em texto)
-        pdf_convertapi = converter_por_convertapi(tmp_docx_path)
+        try:
+            pdf_convertapi = converter_por_convertapi(tmp_docx_path)
+        except BaseException:
+            pdf_convertapi = None
         if pdf_convertapi:
             return pdf_convertapi, "ConvertAPI (nuvem)"
 
