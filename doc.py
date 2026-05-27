@@ -176,6 +176,59 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             st.warning(f"Erro na integração ConvertAPI: {str(e)}")
             return None
 
+    def converter_por_adobe(docx_data):
+        """
+        Converte DOCX para PDF via Adobe PDF Services API.
+        Requer ADOBE_CLIENT_ID e ADOBE_CLIENT_SECRET nos secrets/env.
+        """
+        def get_secret(key):
+            try:
+                return st.secrets.get(key, "") or ""
+            except Exception:
+                return os.getenv(key, "") or ""
+
+        client_id = get_secret("ADOBE_CLIENT_ID")
+        client_secret = get_secret("ADOBE_CLIENT_SECRET")
+
+        if not client_id or not client_secret:
+            return None
+
+        try:
+            from adobe.pdfservices.operation.auth.service_principal_credentials import ServicePrincipalCredentials
+            from adobe.pdfservices.operation.pdf_services import PDFServices
+            from adobe.pdfservices.operation.pdf_services_media_type import PDFServicesMediaType
+            from adobe.pdfservices.operation.pdfjobs.jobs.create_pdf_job import CreatePDFJob
+            from adobe.pdfservices.operation.pdfjobs.result.create_pdf_result import CreatePDFResult
+        except ImportError:
+            st.warning("Adobe PDF Services SDK não instalado. Execute: pip install pdfservices-sdk")
+            return None
+
+        try:
+            credentials = ServicePrincipalCredentials(
+                client_id=client_id.strip(),
+                client_secret=client_secret.strip()
+            )
+            pdf_services = PDFServices(credentials=credentials)
+
+            input_stream = io.BytesIO(docx_data)
+            input_asset = pdf_services.upload(
+                input_stream=input_stream,
+                mime_type=PDFServicesMediaType.DOCX
+            )
+
+            job = CreatePDFJob(input_asset=input_asset)
+            location = pdf_services.submit(job)
+            response = pdf_services.get_job_result(location, CreatePDFResult)
+
+            result_asset = response.get_result().get_asset()
+            stream_asset = pdf_services.get_content(result_asset)
+
+            return stream_asset.get_input_stream().read()
+
+        except BaseException as e:
+            st.warning(f"Erro no Adobe PDF Services: {str(e)}")
+            return None
+
     def gerar_pdf_fallback(docx_data):
         """
         Gera PDF a partir do DOCX preservando formatação (negrito, tamanho, alinhamento).
@@ -356,7 +409,15 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             except Exception:
                 pass
 
-        # Terceira tentativa: conversao em nuvem (fidelidade melhor que fallback em texto)
+        # Terceira tentativa: Adobe PDF Services (fidelidade máxima ao Word)
+        try:
+            pdf_adobe = converter_por_adobe(docx_bytes)
+        except BaseException:
+            pdf_adobe = None
+        if pdf_adobe:
+            return pdf_adobe, "Adobe PDF Services"
+
+        # Quarta tentativa: ConvertAPI
         try:
             pdf_convertapi = converter_por_convertapi(tmp_docx_path)
         except BaseException:
