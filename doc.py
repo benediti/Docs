@@ -195,9 +195,14 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
 
         try:
             from adobe.pdfservices.operation.auth.service_principal_credentials import ServicePrincipalCredentials
+            from adobe.pdfservices.operation.exception.exceptions import ServiceApiException, ServiceUsageException, SdkException
+            from adobe.pdfservices.operation.io.cloud_asset import CloudAsset
+            from adobe.pdfservices.operation.io.stream_asset import StreamAsset
             from adobe.pdfservices.operation.pdf_services import PDFServices
             from adobe.pdfservices.operation.pdf_services_media_type import PDFServicesMediaType
             from adobe.pdfservices.operation.pdfjobs.jobs.create_pdf_job import CreatePDFJob
+            from adobe.pdfservices.operation.pdfjobs.params.create_pdf.word.create_pdf_from_word_params import CreatePDFFromWordParams
+            from adobe.pdfservices.operation.pdfjobs.params.create_pdf.word.document_language import DocumentLanguage
             from adobe.pdfservices.operation.pdfjobs.result.create_pdf_result import CreatePDFResult
         except ImportError:
             st.warning("Adobe PDF Services SDK não instalado. Execute: pip install pdfservices-sdk")
@@ -210,23 +215,31 @@ def converter_docx_para_pdf(docx_bytes, nome_arquivo_base):
             )
             pdf_services = PDFServices(credentials=credentials)
 
-            input_stream = io.BytesIO(docx_data)
             input_asset = pdf_services.upload(
-                input_stream=input_stream,
+                input_stream=io.BytesIO(docx_data),
                 mime_type=PDFServicesMediaType.DOCX
             )
 
-            job = CreatePDFJob(input_asset=input_asset)
+            # Idioma PT_BR para melhor fidelidade na conversão
+            create_pdf_params = CreatePDFFromWordParams(
+                document_language=DocumentLanguage.PT_BR
+            )
+
+            job = CreatePDFJob(input_asset=input_asset, create_pdf_params=create_pdf_params)
             location = pdf_services.submit(job)
             response = pdf_services.get_job_result(location, CreatePDFResult)
 
-            result_asset = response.get_result().get_asset()
-            stream_asset = pdf_services.get_content(result_asset)
+            result_asset: CloudAsset = response.get_result().get_asset()
+            stream_asset: StreamAsset = pdf_services.get_content(result_asset)
 
-            return stream_asset.get_input_stream().read()
+            # get_input_stream() retorna bytes diretamente
+            return stream_asset.get_input_stream()
 
-        except BaseException as e:
+        except (ServiceApiException, ServiceUsageException, SdkException) as e:
             st.warning(f"Erro no Adobe PDF Services: {str(e)}")
+            return None
+        except BaseException as e:
+            st.warning(f"Erro inesperado no Adobe PDF Services: {str(e)}")
             return None
 
     def gerar_pdf_fallback(docx_data):
